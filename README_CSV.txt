@@ -10,9 +10,15 @@ Files
    - Enter 50% as 50, not 0.50.
 
 3. plot_facs_longitudinal.R
-   - The script prefers Plate_Map.csv + FACS_Data.csv.
+   - The script accepts CSV or TSV pairs and prefers CSV when both exist.
    - Run: Rscript plot_facs_longitudinal.R
-   - Results are written to FACS_plot_results/.
+   - Results are written to FACS_plot_results_v2/.
+   - Main plots:
+       01_MFI_heatmap_all_constructs.png
+       02_latest_day_MFI_ranking.png
+       03_top_candidate_MFI_trajectories.png
+       04_latest_day_expression_tradeoff.png
+       05_GFP_positive_heatmap_all_constructs.png
 
 Recommended workflow
 - Transfer this ZIP to the internal Linux server without opening its contents in Excel first.

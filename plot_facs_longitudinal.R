@@ -51,7 +51,7 @@ suppressPackageStartupMessages({
 })
 
 # ----------------------------- User settings -----------------------------
-OUTPUT_DIR <- "FACS_plot_results"
+OUTPUT_DIR <- "FACS_plot_results_v2"
 ORIGINAL_NAME <- "Original"
 DAY_ORDER <- c("D1", "D3", "D5", "D7", "D9", "D11")
 # Usually leave blank. If a legacy Korean Windows TSV is garbled, set "CP949".
@@ -60,7 +60,7 @@ TSV_ENCODING_OVERRIDE <- ""
 # Leave empty for automatic selection of Original + top candidates at latest day.
 # Example: HIGHLIGHT_CONSTRUCTS <- c("Original", "TOP3", "TOP11", "TOP24")
 HIGHLIGHT_CONSTRUCTS <- character(0)
-N_AUTO_HIGHLIGHT <- 8
+N_AUTO_HIGHLIGHT <- 7
 
 # TRUE: use only GFP_GeoMean among GFP-positive cells, if that is how FlowJo exported it.
 # Record the exact parent population in the workbook Notes column.
@@ -292,105 +292,196 @@ if (length(HIGHLIGHT_CONSTRUCTS) == 0) {
   HIGHLIGHT_CONSTRUCTS <- unique(c(ORIGINAL_NAME, auto_hits))
 }
 
-plot_theme <- theme_bw(base_size = 11) +
+plot_theme <- theme_classic(base_size = 13) +
   theme(
-    panel.grid.minor = element_blank(),
-    strip.background = element_rect(fill = "#D9EAF7", color = "#7F8FA6"),
-    strip.text = element_text(face = "bold"),
-    legend.position = "bottom"
+    plot.title = element_text(face = "bold", size = 16, margin = margin(b = 5)),
+    plot.subtitle = element_text(color = "#4D4D4D", size = 11, margin = margin(b = 10)),
+    axis.title = element_text(face = "bold"),
+    axis.text = element_text(color = "#222222"),
+    strip.background = element_rect(fill = "#EAF0F6", color = NA),
+    strip.text = element_text(face = "bold", size = 12),
+    panel.spacing = grid::unit(1.1, "lines"),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold"),
+    plot.margin = margin(12, 16, 12, 12)
   )
 
-highlight_dat <- summary_vs_original %>%
-  filter(Construct %in% HIGHLIGHT_CONSTRUCTS)
+# Global construct order emphasizes sustained MFI performance across measured days.
+construct_order <- summary_vs_original %>%
+  filter(str_to_lower(Construct) != str_to_lower(ORIGINAL_NAME), !is.na(MFI_Pct_vs_Original)) %>%
+  group_by(Construct) %>%
+  summarise(Order_score = mean(MFI_Pct_vs_Original, na.rm = TRUE), .groups = "drop") %>%
+  arrange(Order_score) %>%
+  pull(Construct)
+construct_order <- c(construct_order, ORIGINAL_NAME)
 
-p1 <- ggplot(highlight_dat, aes(Day_Number, MFI_Fold_vs_Original, color = Construct, group = Construct)) +
-  geom_hline(yintercept = 1, linetype = 2, color = "#555555") +
+heatmap_dat <- summary_vs_original %>%
+  mutate(Construct_plot = factor(Construct, levels = construct_order))
+
+highlight_dat <- summary_vs_original %>%
+  filter(Construct %in% HIGHLIGHT_CONSTRUCTS) %>%
+  mutate(Construct = factor(Construct, levels = HIGHLIGHT_CONSTRUCTS))
+
+replicate_highlight <- dat_vs_original %>%
+  filter(Construct %in% HIGHLIGHT_CONSTRUCTS) %>%
+  mutate(Construct = factor(Construct, levels = HIGHLIGHT_CONSTRUCTS))
+
+candidate_levels <- setdiff(HIGHLIGHT_CONSTRUCTS, ORIGINAL_NAME)
+candidate_colors <- if (length(candidate_levels) > 0) {
+  setNames(grDevices::hcl.colors(length(candidate_levels), palette = "Dark 3"), candidate_levels)
+} else {
+  character(0)
+}
+highlight_colors <- c(setNames("#111111", ORIGINAL_NAME), candidate_colors)
+
+# 1. Main overview: all constructs and all time points. Labels appear only for
+# differences of at least 5%, keeping the heatmap readable.
+p1 <- ggplot(heatmap_dat, aes(Day, Construct_plot, fill = MFI_Pct_vs_Original)) +
+  geom_tile(color = "white", linewidth = 0.35) +
+  geom_text(
+    aes(label = ifelse(!is.na(MFI_Pct_vs_Original) & abs(MFI_Pct_vs_Original) >= 5,
+                       sprintf("%+.0f", MFI_Pct_vs_Original), "")),
+    size = 2.5, color = "#202020"
+  ) +
+  facet_wrap(~Condition, scales = "free_x") +
+  scale_fill_gradient2(
+    low = "#C44E52", mid = "#F7F7F7", high = "#2C7FB8", midpoint = 0,
+    na.value = "#ECECEC", name = "% vs Original"
+  ) +
+  labs(
+    title = "GFP GeoMean relative to Original",
+    subtitle = "Blue: higher than Original | Red: lower than Original | cell labels show differences >=5%",
+    x = NULL, y = NULL
+  ) +
+  plot_theme +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(face = "bold"),
+    axis.text.y = element_text(size = 9),
+    legend.key.width = grid::unit(2.2, "cm")
+  )
+ggsave(file.path(OUTPUT_DIR, "01_MFI_heatmap_all_constructs.png"), p1, width = 12, height = 11, dpi = 320, bg = "white")
+
+# Latest measured day is determined separately for each condition.
+latest_by_condition <- summary_vs_original %>%
+  filter(!is.na(MFI_Pct_vs_Original)) %>%
+  group_by(Condition) %>%
+  filter(Day_Number == max(Day_Number, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(
+    Rank_key = paste(Construct, Condition, sep = "___"),
+    Rank_key = reorder(Rank_key, MFI_Pct_vs_Original)
+  )
+
+# 2. Clean ranked plot for the latest measured day in each condition.
+p2 <- ggplot(latest_by_condition, aes(MFI_Pct_vs_Original, Rank_key)) +
+  geom_vline(xintercept = 0, linetype = 2, linewidth = 0.6, color = "#555555") +
+  geom_segment(aes(x = 0, xend = MFI_Pct_vs_Original, yend = Rank_key), color = "#D0D0D0", linewidth = 0.55) +
+  geom_point(aes(color = MFI_Pct_vs_Original >= 0), size = 3) +
+  facet_wrap(~Condition, scales = "free_y") +
+  scale_y_discrete(labels = function(x) sub("___.*$", "", x)) +
+  scale_color_manual(values = c(`TRUE` = "#2C7FB8", `FALSE` = "#B8B8B8"), guide = "none") +
+  labs(
+    title = "Latest-day ranking",
+    subtitle = "Horizontal distance from zero is the mean GFP GeoMean difference versus Original",
+    x = "GFP GeoMean difference vs Original (%)", y = NULL
+  ) +
+  plot_theme +
+  theme(panel.grid.major.x = element_line(color = "#ECECEC"), axis.text.y = element_text(size = 9))
+ggsave(file.path(OUTPUT_DIR, "02_latest_day_MFI_ranking.png"), p2, width = 12, height = 10.5, dpi = 320, bg = "white")
+
+# 3. Longitudinal plot is restricted to the strongest candidates plus Original.
+p3 <- ggplot(highlight_dat, aes(Day_Number, MFI_Fold_vs_Original, color = Construct, group = Construct)) +
+  geom_hline(yintercept = 1, linetype = 2, linewidth = 0.7, color = "#555555") +
   geom_point(
-    data = dat_vs_original %>% filter(Construct %in% HIGHLIGHT_CONSTRUCTS),
+    data = replicate_highlight,
     aes(Day_Number, MFI_Fold_vs_Original, color = Construct),
-    inherit.aes = FALSE, alpha = 0.35, size = 1.4,
-    position = position_jitter(width = 0.07, height = 0)
+    inherit.aes = FALSE, alpha = 0.25, size = 1.8,
+    position = position_jitter(width = 0.08, height = 0)
   ) +
   geom_errorbar(
     aes(ymin = MFI_Fold_vs_Original - MFI_SEM_Fold,
         ymax = MFI_Fold_vs_Original + MFI_SEM_Fold),
-    width = 0.12, linewidth = 0.4
+    width = 0.13, linewidth = 0.45, alpha = 0.75
   ) +
-  geom_line(linewidth = 0.8) +
-  geom_point(size = 2) +
+  geom_line(linewidth = 1.05) +
+  geom_point(size = 2.8) +
+  geom_line(
+    data = highlight_dat %>% filter(as.character(Construct) == ORIGINAL_NAME),
+    linewidth = 1.6, color = "#111111"
+  ) +
   facet_wrap(~Condition) +
+  scale_color_manual(values = highlight_colors, drop = FALSE) +
   scale_x_continuous(breaks = c(1, 3, 5, 7, 9, 11), labels = paste0("D", c(1, 3, 5, 7, 9, 11))) +
   labs(
-    title = "GFP GeoMean trajectory relative to Original",
-    subtitle = if (GFP_GEOMEAN_IS_WITHIN_POSITIVE_GATE) "GeoMean within GFP+ population" else "GeoMean parent population: verify Notes",
-    x = "Day", y = "Fold vs Original", color = "Construct"
-  ) + plot_theme
-ggsave(file.path(OUTPUT_DIR, "01_MFI_fold_trajectory_highlights.png"), p1, width = 10, height = 6, dpi = 300)
-
-p2 <- ggplot(summary_vs_original, aes(MFI_Pct_vs_Original, reorder(Construct, MFI_Pct_vs_Original))) +
-  geom_vline(xintercept = 0, linetype = 2, color = "#555555") +
-  geom_point(aes(color = MFI_Pct_vs_Original >= 0), size = 1.8) +
-  facet_grid(Condition ~ Day, scales = "free_y") +
-  scale_color_manual(values = c(`TRUE` = "#2F75B5", `FALSE` = "#A6A6A6"), guide = "none") +
-  labs(title = "GFP GeoMean difference vs Original", x = "% difference vs Original", y = "Construct") +
-  plot_theme + theme(axis.text.y = element_text(size = 5))
-ggsave(file.path(OUTPUT_DIR, "02_MFI_percent_vs_original_all_days.png"), p2, width = 15, height = 10, dpi = 300)
-
-p3 <- ggplot(highlight_dat, aes(Day_Number, GFP_Positive_mean, color = Construct, group = Construct)) +
-  geom_point(
-    data = dat %>% filter(Construct %in% HIGHLIGHT_CONSTRUCTS),
-    aes(Day_Number, GFP_Positive_Pct, color = Construct),
-    inherit.aes = FALSE, alpha = 0.35, size = 1.4,
-    position = position_jitter(width = 0.07, height = 0)
+    title = "Top-candidate MFI trajectories",
+    subtitle = "Large points: triplicate mean | error bars: SEM | faint points: individual replicates",
+    x = "Day", y = "GFP GeoMean fold vs Original", color = "Construct"
   ) +
-  geom_errorbar(
-    aes(ymin = GFP_Positive_mean - GFP_Positive_sem,
-        ymax = GFP_Positive_mean + GFP_Positive_sem),
-    width = 0.12, linewidth = 0.4
-  ) +
-  geom_line(linewidth = 0.8) +
-  geom_point(size = 2) +
-  facet_wrap(~Condition) +
-  scale_x_continuous(breaks = c(1, 3, 5, 7, 9, 11), labels = paste0("D", c(1, 3, 5, 7, 9, 11))) +
-  coord_cartesian(ylim = c(0, 100)) +
-  labs(title = "GFP-positive population trajectory", x = "Day", y = "GFP positive (%)", color = "Construct") +
-  plot_theme
-ggsave(file.path(OUTPUT_DIR, "03_GFP_positive_trajectory_highlights.png"), p3, width = 10, height = 6, dpi = 300)
+  plot_theme +
+  theme(panel.grid.major.y = element_line(color = "#ECECEC"))
+ggsave(file.path(OUTPUT_DIR, "03_top_candidate_MFI_trajectories.png"), p3, width = 12, height = 7, dpi = 320, bg = "white")
 
-p4 <- ggplot(summary_vs_original, aes(GFP_Positive_mean, MFI_Fold_vs_Original, color = Day)) +
-  geom_hline(yintercept = 1, linetype = 2, color = "#555555") +
-  geom_point(size = 2, alpha = 0.8) +
-  geom_text_repel(
-    data = subset(summary_vs_original, Construct %in% HIGHLIGHT_CONSTRUCTS),
-    aes(label = Construct), size = 2.7, max.overlaps = 30, show.legend = FALSE
-  ) +
-  facet_wrap(~Condition) +
+# 4. Latest-day decision map separates intensity gain from GFP-positive fraction.
+decision_dat <- latest_by_condition %>%
+  mutate(
+    Decision = case_when(
+      MFI_Pct_vs_Original >= 0 & GFP_Positive_pp_vs_Original >= 0 ~ "Both higher",
+      MFI_Pct_vs_Original >= 0 & GFP_Positive_pp_vs_Original < 0 ~ "MFI higher / GFP+ lower",
+      MFI_Pct_vs_Original < 0 & GFP_Positive_pp_vs_Original >= 0 ~ "MFI lower / GFP+ higher",
+      TRUE ~ "Both lower"
+    ),
+    Point_label = ifelse(Construct %in% HIGHLIGHT_CONSTRUCTS, Construct, "")
+  )
+
+p4 <- ggplot(decision_dat, aes(GFP_Positive_pp_vs_Original, MFI_Pct_vs_Original)) +
+  geom_vline(xintercept = 0, linetype = 2, color = "#777777") +
+  geom_hline(yintercept = 0, linetype = 2, color = "#777777") +
+  geom_point(aes(color = Decision), size = 3.2, alpha = 0.9) +
+  geom_text_repel(aes(label = Point_label), size = 3.2, max.overlaps = Inf, box.padding = 0.35, show.legend = FALSE) +
+  facet_wrap(~Condition, scales = "free") +
+  scale_color_manual(values = c(
+    "Both higher" = "#167D5A",
+    "MFI higher / GFP+ lower" = "#2C7FB8",
+    "MFI lower / GFP+ higher" = "#D99A2B",
+    "Both lower" = "#B8B8B8"
+  )) +
   labs(
-    title = "Expression fraction vs intensity",
-    x = "GFP positive (%)", y = "GFP GeoMean fold vs Original", color = "Day"
-  ) + plot_theme
-ggsave(file.path(OUTPUT_DIR, "04_GFP_positive_vs_MFI_fold.png"), p4, width = 10, height = 7, dpi = 300)
+    title = "Latest-day expression trade-off",
+    subtitle = "Upper-right quadrant identifies candidates exceeding Original in both intensity and GFP-positive fraction",
+    x = "GFP-positive difference vs Original (percentage points)",
+    y = "GFP GeoMean difference vs Original (%)", color = NULL
+  ) +
+  plot_theme +
+  theme(panel.grid.major = element_line(color = "#EEEEEE"))
+ggsave(file.path(OUTPUT_DIR, "04_latest_day_expression_tradeoff.png"), p4, width = 12, height = 7.5, dpi = 320, bg = "white")
 
-p5 <- ggplot(highlight_dat, aes(Day_Number, Live_Cell_mean, color = Construct, group = Construct)) +
-  geom_point(
-    data = dat %>% filter(Construct %in% HIGHLIGHT_CONSTRUCTS),
-    aes(Day_Number, Live_Cell_Pct, color = Construct),
-    inherit.aes = FALSE, alpha = 0.35, size = 1.4,
-    position = position_jitter(width = 0.07, height = 0)
+# 5. GFP-positive fraction is shown as a difference from Original, not as 32 overlapping lines.
+p5 <- ggplot(heatmap_dat, aes(Day, Construct_plot, fill = GFP_Positive_pp_vs_Original)) +
+  geom_tile(color = "white", linewidth = 0.35) +
+  geom_text(
+    aes(label = ifelse(!is.na(GFP_Positive_pp_vs_Original) & abs(GFP_Positive_pp_vs_Original) >= 3,
+                       sprintf("%+.1f", GFP_Positive_pp_vs_Original), "")),
+    size = 2.4, color = "#202020"
   ) +
-  geom_errorbar(
-    aes(ymin = Live_Cell_mean - Live_Cell_sem,
-        ymax = Live_Cell_mean + Live_Cell_sem),
-    width = 0.12, linewidth = 0.4
+  facet_wrap(~Condition, scales = "free_x") +
+  scale_fill_gradient2(
+    low = "#C44E52", mid = "#F7F7F7", high = "#2C7FB8", midpoint = 0,
+    na.value = "#ECECEC", name = "pp vs Original"
   ) +
-  geom_line(linewidth = 0.8) +
-  geom_point(size = 2) +
-  facet_wrap(~Condition) +
-  scale_x_continuous(breaks = c(1, 3, 5, 7, 9, 11), labels = paste0("D", c(1, 3, 5, 7, 9, 11))) +
-  coord_cartesian(ylim = c(0, 100)) +
-  labs(title = "Live-cell trajectory", x = "Day", y = "Live cells (%)", color = "Construct") +
-  plot_theme
-ggsave(file.path(OUTPUT_DIR, "05_Live_cell_trajectory_highlights.png"), p5, width = 10, height = 6, dpi = 300)
+  labs(
+    title = "GFP-positive fraction relative to Original",
+    subtitle = "Values are percentage-point differences; labels are shown for absolute differences >=3 pp",
+    x = NULL, y = NULL
+  ) +
+  plot_theme +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(face = "bold"),
+    axis.text.y = element_text(size = 9),
+    legend.key.width = grid::unit(2.2, "cm")
+  )
+ggsave(file.path(OUTPUT_DIR, "05_GFP_positive_heatmap_all_constructs.png"), p5, width = 12, height = 11, dpi = 320, bg = "white")
 
 message("Analysis complete. Results written to: ", normalizePath(OUTPUT_DIR))
 message("Highlighted constructs: ", paste(HIGHLIGHT_CONSTRUCTS, collapse = ", "))
