@@ -1,25 +1,32 @@
 # CHO 5'UTR transposase FACS longitudinal analysis
-# Preferred input: Plate_Map.tsv + FACS_Data.tsv
+# Preferred input: Plate_Map.csv + FACS_Data.csv
+# Secondary input: Plate_Map.tsv + FACS_Data.tsv
 # Fallback input: CHO_5UTR_FACS_D1-D11_Input_Template.xlsx
 # Required packages: dplyr, tidyr, ggplot2, stringr, ggrepel
 # readxl is required only when the XLSX fallback is used.
 
+CSV_PLATE_MAP_FILE <- "Plate_Map.csv"
+CSV_FACS_DATA_FILE <- "FACS_Data.csv"
 TSV_PLATE_MAP_FILE <- "Plate_Map.tsv"
 TSV_FACS_DATA_FILE <- "FACS_Data.tsv"
 XLSX_INPUT_FILE <- "CHO_5UTR_FACS_D1-D11_Input_Template.xlsx"
 
+csv_available <- file.exists(CSV_PLATE_MAP_FILE) && file.exists(CSV_FACS_DATA_FILE)
 tsv_available <- file.exists(TSV_PLATE_MAP_FILE) && file.exists(TSV_FACS_DATA_FILE)
 xlsx_available <- file.exists(XLSX_INPUT_FILE)
 
-if (tsv_available) {
+if (csv_available) {
+  INPUT_MODE <- "csv"
+} else if (tsv_available) {
   INPUT_MODE <- "tsv"
 } else if (xlsx_available) {
   INPUT_MODE <- "xlsx"
 } else {
   stop(
     "Input files were not found. Put either:\n",
-    "  1) Plate_Map.tsv and FACS_Data.tsv, or\n",
-    "  2) CHO_5UTR_FACS_D1-D11_Input_Template.xlsx\n",
+    "  1) Plate_Map.csv and FACS_Data.csv,\n",
+    "  2) Plate_Map.tsv and FACS_Data.tsv, or\n",
+    "  3) CHO_5UTR_FACS_D1-D11_Input_Template.xlsx\n",
     "in the same directory as this R script."
   )
 }
@@ -108,7 +115,26 @@ read_tsv_flexible <- function(path) {
   x
 }
 
-if (INPUT_MODE == "tsv") {
+read_csv_utf8 <- function(path) {
+  x <- read.csv(
+    path,
+    header = TRUE,
+    check.names = FALSE,
+    na.strings = c("", "NA"),
+    quote = "\"",
+    comment.char = "",
+    fileEncoding = "UTF-8",
+    stringsAsFactors = FALSE
+  )
+  names(x) <- sub(paste0("^", intToUtf8(65279)), "", names(x))
+  x
+}
+
+if (INPUT_MODE == "csv") {
+  plate_map_input <- read_csv_utf8(CSV_PLATE_MAP_FILE)
+  facs_input <- read_csv_utf8(CSV_FACS_DATA_FILE)
+  message("Input mode: CSV")
+} else if (INPUT_MODE == "tsv") {
   plate_map_input <- read_tsv_flexible(TSV_PLATE_MAP_FILE)
   facs_input <- read_tsv_flexible(TSV_FACS_DATA_FILE)
   message("Input mode: TSV")
