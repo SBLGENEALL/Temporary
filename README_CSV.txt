@@ -12,13 +12,13 @@ Files
 3. plot_facs_longitudinal.R
    - The script accepts CSV or TSV pairs and prefers CSV when both exist.
    - Run: Rscript plot_facs_longitudinal.R
-   - Results are written to FACS_plot_results_v2/.
+   - Results are written to FACS_plot_results_v3_prism/.
    - Main plots:
-       01_MFI_heatmap_all_constructs.png
-       02_latest_day_MFI_ranking.png
-       03_top_candidate_MFI_trajectories.png
-       04_latest_day_expression_tradeoff.png
-       05_GFP_positive_heatmap_all_constructs.png
+       01_MFI_barplots_by_day/ (one mean +/- SD bar plot per day and condition)
+       02_GFP_positive_barplots_by_day/ (one mean +/- SD bar plot per day and condition)
+       03_MFI_lineplot_top_candidates.png
+       04_GFP_positive_lineplot_top_candidates.png
+       05_MFI_lineplot_all_candidates_small_multiples.png
 
 Recommended workflow
 - Transfer this ZIP to the internal Linux server without opening its contents in Excel first.
