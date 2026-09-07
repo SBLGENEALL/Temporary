@@ -219,6 +219,17 @@ dat <- facs_raw %>%
     Construct = if_else(is.na(Construct), paste0("UNMAPPED_", Well), Construct)
   )
 
+# Preserve the first-appearance order from Plate_Map exactly as entered by the user.
+# Repeated wells/replicates do not create duplicate axis entries.
+input_construct_order <- plate_map %>%
+  filter(!is.na(Construct), Construct != "") %>%
+  pull(Construct) %>%
+  unique()
+input_construct_order <- c(
+  input_construct_order,
+  setdiff(unique(as.character(dat$Construct)), input_construct_order)
+)
+
 if (any(str_starts(dat$Construct, "UNMAPPED_"))) {
   warning("Some wells have no Construct in Plate_Map. They are retained as UNMAPPED_<well>.")
 }
@@ -289,7 +300,8 @@ if (length(HIGHLIGHT_CONSTRUCTS) == 0) {
     distinct(Construct) %>%
     slice_head(n = N_AUTO_HIGHLIGHT) %>%
     pull(Construct)
-  HIGHLIGHT_CONSTRUCTS <- unique(c(ORIGINAL_NAME, auto_hits))
+  selected_highlights <- unique(c(ORIGINAL_NAME, auto_hits))
+  HIGHLIGHT_CONSTRUCTS <- input_construct_order[input_construct_order %in% selected_highlights]
 }
 
 prism_theme <- theme_classic(base_size = 13) +
@@ -307,13 +319,11 @@ prism_theme <- theme_classic(base_size = 13) +
     plot.margin = margin(12, 14, 12, 12)
   )
 
-# Use natural TOP number order and place Original last.
-all_constructs <- unique(as.character(summary_dat$Construct))
-candidate_order <- str_sort(
-  all_constructs[str_to_lower(all_constructs) != str_to_lower(ORIGINAL_NAME)],
-  numeric = TRUE
-)
-construct_order <- c(candidate_order, ORIGINAL_NAME)
+# Keep the exact first-appearance order from Plate_Map; do not sort TOP numbers.
+construct_order <- input_construct_order
+candidate_order <- construct_order[
+  str_to_lower(construct_order) != str_to_lower(ORIGINAL_NAME)
+]
 
 summary_plot <- summary_vs_original %>%
   mutate(
@@ -404,7 +414,7 @@ for (i in seq_len(nrow(available_panels))) {
 }
 
 # Clear longitudinal plots: Original plus automatically selected top candidates.
-highlight_levels <- unique(c(ORIGINAL_NAME, setdiff(HIGHLIGHT_CONSTRUCTS, ORIGINAL_NAME)))
+highlight_levels <- HIGHLIGHT_CONSTRUCTS
 highlight_summary <- summary_vs_original %>%
   filter(Construct %in% highlight_levels) %>%
   mutate(Construct = factor(Construct, levels = highlight_levels))

@@ -3,6 +3,7 @@ CHO 5'UTR Transposase FACS CSV bundle
 Files
 1. Plate_Map.csv
    - Enter Construct, Replicate, DNA_Prep, DNA_Batch once for wells A1-H12.
+   - Plot order follows the first appearance of each Construct in Plate_Map; TOP numbers are not sorted.
 
 2. FACS_Data.csv
    - Paste FlowJo values into the matching Day and Well rows.
