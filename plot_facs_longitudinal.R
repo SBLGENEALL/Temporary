@@ -1,8 +1,31 @@
 # CHO 5'UTR transposase FACS longitudinal analysis
-# Input workbook: CHO_5UTR_FACS_D1-D11_Input_Template.xlsx
-# Required packages: readxl, dplyr, tidyr, ggplot2, stringr, ggrepel
+# Preferred input: Plate_Map.tsv + FACS_Data.tsv
+# Fallback input: CHO_5UTR_FACS_D1-D11_Input_Template.xlsx
+# Required packages: dplyr, tidyr, ggplot2, stringr, ggrepel
+# readxl is required only when the XLSX fallback is used.
 
-required_packages <- c("readxl", "dplyr", "tidyr", "ggplot2", "stringr", "ggrepel")
+TSV_PLATE_MAP_FILE <- "Plate_Map.tsv"
+TSV_FACS_DATA_FILE <- "FACS_Data.tsv"
+XLSX_INPUT_FILE <- "CHO_5UTR_FACS_D1-D11_Input_Template.xlsx"
+
+tsv_available <- file.exists(TSV_PLATE_MAP_FILE) && file.exists(TSV_FACS_DATA_FILE)
+xlsx_available <- file.exists(XLSX_INPUT_FILE)
+
+if (tsv_available) {
+  INPUT_MODE <- "tsv"
+} else if (xlsx_available) {
+  INPUT_MODE <- "xlsx"
+} else {
+  stop(
+    "Input files were not found. Put either:\n",
+    "  1) Plate_Map.tsv and FACS_Data.tsv, or\n",
+    "  2) CHO_5UTR_FACS_D1-D11_Input_Template.xlsx\n",
+    "in the same directory as this R script."
+  )
+}
+
+required_packages <- c("dplyr", "tidyr", "ggplot2", "stringr", "ggrepel")
+if (INPUT_MODE == "xlsx") required_packages <- c("readxl", required_packages)
 missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_packages) > 0) {
   stop(
@@ -12,19 +35,20 @@ if (length(missing_packages) > 0) {
 }
 
 suppressPackageStartupMessages({
-  library(readxl)
   library(dplyr)
   library(tidyr)
   library(ggplot2)
   library(stringr)
   library(ggrepel)
+  if (INPUT_MODE == "xlsx") library(readxl)
 })
 
 # ----------------------------- User settings -----------------------------
-INPUT_FILE <- "CHO_5UTR_FACS_D1-D11_Input_Template.xlsx"
 OUTPUT_DIR <- "FACS_plot_results"
 ORIGINAL_NAME <- "Original"
 DAY_ORDER <- c("D1", "D3", "D5", "D7", "D9", "D11")
+# Usually leave blank. If a legacy Korean Windows TSV is garbled, set "CP949".
+TSV_ENCODING_OVERRIDE <- ""
 
 # Leave empty for automatic selection of Original + top candidates at latest day.
 # Example: HIGHLIGHT_CONSTRUCTS <- c("Original", "TOP3", "TOP11", "TOP24")
@@ -57,7 +81,63 @@ normalize_well <- function(x) {
   str_remove(x, regex("\\.fcs$", ignore_case = TRUE))
 }
 
-plate_map <- read_excel(INPUT_FILE, sheet = "Plate_Map") %>%
+detect_tsv_encoding <- function(path) {
+  con <- file(path, open = "rb")
+  on.exit(close(con))
+  bom <- as.integer(readBin(con, what = "raw", n = 3))
+  if (length(bom) >= 2 && identical(bom[1:2], c(255L, 254L))) return("UTF-16LE")
+  if (length(bom) >= 2 && identical(bom[1:2], c(254L, 255L))) return("UTF-16BE")
+  if (length(bom) >= 3 && identical(bom[1:3], c(239L, 187L, 191L))) return("UTF-8")
+  "UTF-8"
+}
+
+read_tsv_flexible <- function(path) {
+  encoding <- if (nzchar(TSV_ENCODING_OVERRIDE)) TSV_ENCODING_OVERRIDE else detect_tsv_encoding(path)
+  x <- read.delim(
+    path,
+    sep = "\t",
+    header = TRUE,
+    check.names = FALSE,
+    na.strings = c("", "NA"),
+    quote = "\"",
+    comment.char = "",
+    fileEncoding = encoding,
+    stringsAsFactors = FALSE
+  )
+  names(x) <- sub(paste0("^", intToUtf8(65279)), "", names(x))
+  x
+}
+
+if (INPUT_MODE == "tsv") {
+  plate_map_input <- read_tsv_flexible(TSV_PLATE_MAP_FILE)
+  facs_input <- read_tsv_flexible(TSV_FACS_DATA_FILE)
+  message("Input mode: TSV")
+} else {
+  plate_map_input <- read_excel(XLSX_INPUT_FILE, sheet = "Plate_Map")
+  facs_input <- read_excel(XLSX_INPUT_FILE, sheet = "FACS_Data")
+  message("Input mode: XLSX")
+}
+
+require_columns <- function(x, required, label) {
+  missing <- setdiff(required, names(x))
+  if (length(missing) > 0) {
+    stop(label, " is missing columns: ", paste(missing, collapse = ", "))
+  }
+}
+
+require_columns(
+  plate_map_input,
+  c("Well", "Sample_File", "Construct", "Replicate", "DNA_Prep", "DNA_Batch", "Notes"),
+  "Plate map input"
+)
+require_columns(
+  facs_input,
+  c("Day", "Condition", "Acquisition_Date", "Well", "Sample_File",
+    "Live_Cell_Pct", "GFP_Positive_Pct", "GFP_GeoMean", "Notes"),
+  "FACS data input"
+)
+
+plate_map <- plate_map_input %>%
   transmute(
     Well = normalize_well(Well),
     Sample_File_Map = as.character(Sample_File),
@@ -69,7 +149,7 @@ plate_map <- read_excel(INPUT_FILE, sheet = "Plate_Map") %>%
   ) %>%
   filter(!is.na(Well), Well != "")
 
-facs_raw <- read_excel(INPUT_FILE, sheet = "FACS_Data") %>%
+facs_raw <- facs_input %>%
   transmute(
     Day = toupper(str_trim(as.character(Day))),
     Condition = na_if(str_trim(as.character(Condition)), ""),
