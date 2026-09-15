@@ -14,6 +14,8 @@ INPUT RULES
 - Keep the control name exactly as Original.
 - Replace TOP1-TOP31 with actual construct names consistently if needed.
 - Leave missing measurements blank. Do not use 0 for missing data.
+- D1 and D3 are common Pre-selection measurements collected before the split.
+- D7 and D11 each contain a w/o Selection arm and a Selection arm.
 - Each independently transfected well is one replicate. FACS events are not replicates.
 - MFI-like metrics are tested after log2 transformation; plots use the original scale.
 
