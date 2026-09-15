@@ -28,7 +28,7 @@ get_argument <- function(flag, default = NULL) {
 
 has_flag <- function(flag) flag %in% commandArgs(trailingOnly = TRUE)
 
-input_file <- get_argument("--input", "5UTR_FACS_Data_Input.tsv")
+input_file <- get_argument("--input", "5UTR_FACS_Data_Input.csv")
 input_sheet <- get_argument("--sheet", "Data_Input")
 output_dir <- get_argument("--output-dir", "5UTR_FACS_analysis_results")
 control_name <- get_argument("--control", "Original")
@@ -109,13 +109,13 @@ raw_wide <- switch(
   ),
   "xlsx" = {
     if (!requireNamespace("readxl", quietly = TRUE)) {
-      stop("The readxl package is required only for XLSX input. Use the supplied TSV file instead.", call. = FALSE)
+      stop("The readxl package is required only for XLSX input. Use the supplied CSV file instead.", call. = FALSE)
     }
     readxl::read_excel(input_file, sheet = input_sheet)
   },
   "xls" = {
     if (!requireNamespace("readxl", quietly = TRUE)) {
-      stop("The readxl package is required only for XLS input. Use the supplied TSV file instead.", call. = FALSE)
+      stop("The readxl package is required only for XLS input. Use the supplied CSV file instead.", call. = FALSE)
     }
     readxl::read_excel(input_file, sheet = input_sheet)
   },
