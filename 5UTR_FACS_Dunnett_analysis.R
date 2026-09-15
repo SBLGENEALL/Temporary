@@ -4,7 +4,7 @@
 # Primary inference: one-way ANOVA followed by two-sided Dunnett comparisons
 # of each variant versus Original within each Day × Selection × Metric condition.
 
-required_packages <- c("readxl", "dplyr", "tidyr", "ggplot2", "multcomp")
+required_packages <- c("dplyr", "tidyr", "ggplot2", "multcomp")
 missing_packages <- required_packages[
   !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
 ]
@@ -28,7 +28,7 @@ get_argument <- function(flag, default = NULL) {
 
 has_flag <- function(flag) flag %in% commandArgs(trailingOnly = TRUE)
 
-input_file <- get_argument("--input", "5UTR_FACS_statistics_template.xlsx")
+input_file <- get_argument("--input", "5UTR_FACS_Data_Input.tsv")
 input_sheet <- get_argument("--sheet", "Data_Input")
 output_dir <- get_argument("--output-dir", "5UTR_FACS_analysis_results")
 control_name <- get_argument("--control", "Original")
@@ -83,8 +83,45 @@ write_csv_bom <- function(data, path) {
   )
 }
 
-raw_wide <- readxl::read_excel(input_file, sheet = input_sheet)
-names(raw_wide) <- trimws(names(raw_wide))
+input_extension <- tolower(tools::file_ext(input_file))
+raw_wide <- switch(
+  input_extension,
+  "tsv" = utils::read.delim(
+    input_file,
+    check.names = FALSE,
+    stringsAsFactors = FALSE,
+    na.strings = c("", "NA"),
+    fileEncoding = "UTF-8"
+  ),
+  "txt" = utils::read.delim(
+    input_file,
+    check.names = FALSE,
+    stringsAsFactors = FALSE,
+    na.strings = c("", "NA"),
+    fileEncoding = "UTF-8"
+  ),
+  "csv" = utils::read.csv(
+    input_file,
+    check.names = FALSE,
+    stringsAsFactors = FALSE,
+    na.strings = c("", "NA"),
+    fileEncoding = "UTF-8"
+  ),
+  "xlsx" = {
+    if (!requireNamespace("readxl", quietly = TRUE)) {
+      stop("The readxl package is required only for XLSX input. Use the supplied TSV file instead.", call. = FALSE)
+    }
+    readxl::read_excel(input_file, sheet = input_sheet)
+  },
+  "xls" = {
+    if (!requireNamespace("readxl", quietly = TRUE)) {
+      stop("The readxl package is required only for XLS input. Use the supplied TSV file instead.", call. = FALSE)
+    }
+    readxl::read_excel(input_file, sheet = input_sheet)
+  },
+  stop("Unsupported input format. Use .tsv, .txt, .csv, .xlsx, or .xls", call. = FALSE)
+)
+names(raw_wide) <- sub("^\ufeff", "", trimws(names(raw_wide)))
 missing_columns <- setdiff(c(key_columns, replicate_columns), names(raw_wide))
 if (length(missing_columns) > 0) {
   stop(paste("Missing required columns:", paste(missing_columns, collapse = ", ")), call. = FALSE)
