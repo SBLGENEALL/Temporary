@@ -29,13 +29,14 @@ CSV-to-TSV conversion is not required. The R script reads CSV directly.
 
 OUTPUT
 5UTR_FACS_analysis_results/
-  Dunnett_results.csv
+  Welch_Holm_results.csv
+  Dunnett_results.csv (compatibility copy)
   Condition_diagnostics.csv
   Analysis_notes.txt
   figures/
 
 The graph stars and Primary_p_adjusted column use Welch_p_Holm.
-The legacy output filename Dunnett_results.csv is retained for compatibility.
+Use Welch_Holm_results.csv as the primary result table.
 
 REQUIRED R PACKAGES
 dplyr, tidyr, ggplot2, multcomp

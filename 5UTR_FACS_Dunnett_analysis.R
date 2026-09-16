@@ -329,6 +329,7 @@ diagnostics <- dplyr::bind_rows(all_diagnostics)
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 figure_dir <- file.path(output_dir, "figures")
 dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
+write_csv_bom(results, file.path(output_dir, "Welch_Holm_results.csv"))
 write_csv_bom(results, file.path(output_dir, "Dunnett_results.csv"))
 write_csv_bom(diagnostics, file.path(output_dir, "Condition_diagnostics.csv"))
 
@@ -555,6 +556,7 @@ analysis_notes <- c(
   "Bars show mean ± SD and points show independently transfected wells.",
   "FACS events are not replicates; each independently transfected well contributes one value.",
   "Dunnett-adjusted p-values are retained in the result table as a secondary comparison.",
+  "Welch_Holm_results.csv is the primary result file; Dunnett_results.csv is retained as a compatibility copy.",
   "",
   "Warnings:",
   if (length(warning_messages) == 0) "None" else warning_messages
