@@ -1,4 +1,4 @@
-5UTR FACS Dunnett analysis - CSV bundle
+5UTR FACS Welch-Holm analysis - CSV bundle
 
 FILES
 1. 5UTR_FACS_Data_Input.csv
@@ -6,8 +6,9 @@ FILES
    Enter values only in Rep1, Rep2, and Rep3.
 
 2. 5UTR_FACS_Dunnett_analysis.R
-   Runs one-way ANOVA and two-sided Dunnett comparisons versus Original
+   Runs two-sided Welch t-tests versus Original with Holm correction
    separately for each Day, Selection, and Metric condition.
+   Dunnett-adjusted results are retained as a secondary comparison.
 
 INPUT RULES
 - Keep the header row unchanged.
@@ -32,6 +33,9 @@ OUTPUT
   Condition_diagnostics.csv
   Analysis_notes.txt
   figures/
+
+The graph stars and Primary_p_adjusted column use Welch_p_Holm.
+The legacy output filename Dunnett_results.csv is retained for compatibility.
 
 REQUIRED R PACKAGES
 dplyr, tidyr, ggplot2, multcomp

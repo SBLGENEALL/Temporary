@@ -1,8 +1,9 @@
 #!/usr/bin/env Rscript
 
 # 5′UTR FACS analysis
-# Primary inference: one-way ANOVA followed by two-sided Dunnett comparisons
-# of each variant versus Original within each Day × Selection × Metric condition.
+# Primary inference: two-sided Welch t-tests for each variant versus Original,
+# followed by Holm family-wise error correction within each Day × Selection × Metric condition.
+# Dunnett-adjusted results are retained as a secondary comparison.
 
 required_packages <- c("dplyr", "tidyr", "ggplot2", "multcomp")
 missing_packages <- required_packages[
@@ -272,7 +273,7 @@ for (condition_index in seq_len(nrow(condition_keys))) {
       Metric = current_key$Metric,
       Transform = transform_method,
       Fold_vs_Original = Mean / control_mean,
-      Significance = ifelse(
+      Dunnett_significance = ifelse(
         Construct == control_name,
         "control",
         significance_symbol(Dunnett_p_adjusted)
@@ -281,12 +282,16 @@ for (condition_index in seq_len(nrow(condition_keys))) {
         Construct == control_name,
         "control",
         significance_symbol(Welch_p_Holm)
-      )
+      ),
+      Primary_method = "Welch t-test + Holm correction",
+      Primary_p_adjusted = Welch_p_Holm,
+      Primary_significance = Welch_Holm_significance
     ) |>
     dplyr::select(
       Day, Selection, Metric, Construct, Input_order, n, Mean, SD,
       Fold_vs_Original, Transform, Dunnett_statistic, Dunnett_p_adjusted,
-      Significance, Welch_p_raw, Welch_p_Holm, Welch_Holm_significance
+      Dunnett_significance, Welch_p_raw, Welch_p_Holm, Welch_Holm_significance,
+      Primary_method, Primary_p_adjusted, Primary_significance
     )
 
   anova_table <- summary(model)[[1]]
@@ -303,7 +308,7 @@ for (condition_index in seq_len(nrow(condition_keys))) {
     Fligner_Killeen_p = fligner_p,
     Variance_warning = ifelse(
       fligner_p < 0.05,
-      "Unequal variance signal: review Welch-Holm sensitivity results",
+      "Unequal variance signal: Welch-Holm is the primary analysis; interpret n=3 cautiously",
       ""
     ),
     stringsAsFactors = FALSE
@@ -330,7 +335,10 @@ write_csv_bom(diagnostics, file.path(output_dir, "Condition_diagnostics.csv"))
 plot_data <- raw_long |>
   dplyr::inner_join(
     results |>
-      dplyr::select(Day, Selection, Metric, Construct, Input_order, Mean, SD, Significance),
+      dplyr::select(
+        Day, Selection, Metric, Construct, Input_order, Mean, SD,
+        Significance = Primary_significance
+      ),
     by = c("Day", "Selection", "Metric", "Construct", "Input_order")
   )
 
@@ -343,8 +351,8 @@ make_condition_plot <- function(condition_data, condition_results, title_text) {
       Construct = factor(Construct, levels = construct_levels),
       Label = dplyr::case_when(
         Construct == control_name ~ "",
-        Significance == "ns" & !show_ns ~ "",
-        TRUE ~ Significance
+        Primary_significance == "ns" & !show_ns ~ "",
+        TRUE ~ Primary_significance
       )
     )
 
@@ -385,7 +393,7 @@ make_condition_plot <- function(condition_data, condition_results, title_text) {
     ) +
     ggplot2::labs(
       title = title_text,
-      subtitle = "Mean ± SD with individual transfection wells; Dunnett-adjusted p-values vs Original",
+      subtitle = "Mean ± SD with individual transfection wells; Welch t-tests with Holm-adjusted p-values vs Original",
       x = NULL,
       y = as.character(condition_results$Metric[[1]])
     ) +
@@ -462,8 +470,8 @@ for (index in seq_len(nrow(summary_combinations))) {
       Construct = factor(Construct, levels = construct_levels),
       Label = dplyr::case_when(
         as.character(Construct) == control_name ~ "",
-        Significance == "ns" & !show_ns ~ "",
-        TRUE ~ Significance
+        Primary_significance == "ns" & !show_ns ~ "",
+        TRUE ~ Primary_significance
       )
     ) |>
     dplyr::group_by(Day) |>
@@ -511,7 +519,7 @@ for (index in seq_len(nrow(summary_combinations))) {
     ) +
     ggplot2::labs(
       title = paste0(current$Metric, ": ", current$Selection),
-      subtitle = "Mean ± SD with individual transfection wells; Dunnett-adjusted p-values vs Original",
+      subtitle = "Mean ± SD with individual transfection wells; Welch t-tests with Holm-adjusted p-values vs Original",
       x = NULL,
       y = current$Metric
     ) +
@@ -541,12 +549,12 @@ for (index in seq_len(nrow(summary_combinations))) {
 }
 
 analysis_notes <- c(
-  "Primary inference: two-sided Dunnett-adjusted p-values versus Original.",
+  "Primary inference: two-sided Welch t-tests versus Original with Holm family-wise error correction.",
   "The model is fitted separately within every Day × Selection × Metric condition.",
   "MFI-like metrics are log2-transformed for testing in the default auto mode; figures remain on the original scale.",
   "Bars show mean ± SD and points show independently transfected wells.",
   "FACS events are not replicates; each independently transfected well contributes one value.",
-  "Welch t-tests with Holm adjustment are included as a sensitivity analysis.",
+  "Dunnett-adjusted p-values are retained in the result table as a secondary comparison.",
   "",
   "Warnings:",
   if (length(warning_messages) == 0) "None" else warning_messages
